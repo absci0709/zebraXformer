@@ -51,7 +51,7 @@ else:
     print("No GPU available.")
 
 
-feature_dim = 1  # 输入特征维度
+feature_dim = 1  # feature dimention in input
 # Initialize the MAE model architecture
 mae_model1 = MaskedAutoencoderModel(feature_dim=feature_dim, d_model=72, nhead=6, num_layers=2)
 mae_model1.load_state_dict(torch.load('mae_model.pth', map_location=device))

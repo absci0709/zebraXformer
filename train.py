@@ -126,14 +126,13 @@ def build_dataset_all():
 
 #hnn, snn, mnn, total_nn, fish_metrics = build_dataset_all()
 
-# ---------------- 自监督预训练过程 ----------------
-# 初始化MAE模型
-feature_dim = 1  # 输入特征维度
-#feature_dim = 2  # 输入特征维度
-# 准备示例轨迹数据列表（使用随机数据模拟多条轨迹）
-# 在实际应用中，这里应该使用真实的轨迹数据数组
+# ---------------- self-supervised pretraining process ----------------
+# Initialize MAE model 
+feature_dim = 1  # Input feature dimention
+#feature_dim = 2  # Input feature dimention
+# Prepare  trajectory dataset 
 np.random.seed(0)
-#trajectories = [np.random.rand(100, feature_dim) for _ in range(20)]  # 20 条随机轨迹，每条100步，5维特征
+#trajectories = [np.random.rand(100, feature_dim) for _ in range(20)]  
 trajectories = fish_metrics
 dataset_ssl = TrajectoryDatasetSSL(trajectories)
 dataloader_ssl = DataLoader(dataset_ssl, batch_size=4, shuffle=True)
@@ -141,14 +140,14 @@ mae_model = MaskedAutoencoderModel(feature_dim=feature_dim, d_model=72, nhead=6,
 mae_model.to(device)
 mae_model.train()
 
-# 定义优化器和损失函数
+# Define optimizer and loss function 
 optimizer = torch.optim.Adam(mae_model.parameters(), lr=1e-4)
 #optimizer = torch.optim.Adam(mae_model.parameters(), lr=1e-3)
 criterion = nn.MSELoss()
 
 #num_epochs = 5
 num_epochs = 1000 #500
-mask_ratio = 0.3  # 遮蔽30%的时间步
+mask_ratio = 0.3  # mask 30% of time steps 
 maemodel_saved = False
 for epoch in range(num_epochs):
     total_loss = 0.0
@@ -156,19 +155,19 @@ for epoch in range(num_epochs):
         # batch_data: (batch, seq_len, feature_dim)
         batch_data = batch_data.to(device)
         optimizer.zero_grad()
-        # 在张量上随机选择部分时间步进行遮蔽
+        # randomly pick part of the time steps to mask 
         batch_size, seq_len, feat_dim = batch_data.shape
-        # 生成mask矩阵：True表示遮蔽的位置
+        # generate mask matrix: True means masked positions 
         mask = torch.rand(batch_size, seq_len) < mask_ratio  # (batch, seq_len)
-        # 制作被遮蔽的输入：复制原始数据
+        # regenerate the masked input: reconstruction 
         input_masked = batch_data.clone()
-        # 将遮蔽位置的特征设置为0（或其他标记值；这里简单使用0）
+        # set the masked positions to 0 for simplicity 
         input_masked[mask] = 0.0
-        # 前向传播重建
+        # forward propagration reconstruction 
         output_recon = mae_model(input_masked)  # (batch, seq_len, feature_dim)
-        # 计算损失：只在被遮蔽的位置计算MSE误差
-        # 我们需要将 output_recon 和 batch_data 展平成二维，再应用掩码
-        # 方式一：直接按元素计算所有位置的MSE，再用掩码筛选
+        # Compute loss: only compute MSE loss at the masked positions 
+        # We need to spread output_recon and batch_data to 2D before applying the mask 
+        # Method1: compute directly MSE for all positions, before filtering by mask 
         loss = criterion(output_recon[mask], batch_data[mask])
         loss.backward()
         optimizer.step()
@@ -194,37 +193,37 @@ from sklearn.metrics import confusion_matrix, classification_report
 
 
 
-# 创建示例数据集（这里仍用随机数据模拟，假设前10条正常(0)，后10条糖尿病(1)）
+# create sample dataset for labels
 #ll = tr.s.shape[0] //2
 #labels = [0]*ll + [1]*ll
 #labels = [0]*30 + [1]*30 + [2]*30
 labels = [0]*hnn + [1]*snn + [2]*mnn
 
 dataset_cls = TrajectoryDataset(trajectories, labels)
-# 划分训练集和测试集
+# Divide the dataset into training and test sections 
 train_size = int(0.8 * len(dataset_cls))
 test_size = len(dataset_cls) - train_size
 train_dataset, test_dataset = torch.utils.data.random_split(dataset_cls, [train_size, test_size])
 train_loader = DataLoader(train_dataset, batch_size=6, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=6, shuffle=False)
 
-# 初始化分类模型，并加载预训练的编码器权重
-pretrained_encoder = mae_model.encoder  # 从之前训练的MAE模型获取编码器
+# initialize classifier model, and load the encoder weights from pretraining 
+pretrained_encoder = mae_model.encoder  # get the encoder from the MAE model from pretraining 
 #classifier_model = TrajectoryClassifier(encoder=pretrained_encoder, d_model=72, num_classes=2)
 classifier_model = TrajectoryClassifier(encoder=pretrained_encoder, d_model=72, num_classes=3)
 
-# （可选）如果希望微调编码器，可将 encoder 的参数 requires_grad 设置为 True
+# (Optional) if fine-tuning encoder is desired, the requires_grad can be set to True
 for param in classifier_model.encoder.parameters():
-    param.requires_grad = True  # 如果需要微调预训练编码器，则设为 True
+    param.requires_grad = True  # if fine-tuning encoder is desired, the requires_grad can be set to True
 
-# 定义优化器和损失函数（交叉熵用于二分类）
+# Define optmizer and loss function (cross-entropy for 2-classifier) 
 #learning_rate = 1e-1
 learning_rate = 1e-3 #5e-3
 #learning_rate = 1e-4
 optimizer_cls = torch.optim.Adam(classifier_model.parameters(), lr=learning_rate)
 criterion_cls = nn.CrossEntropyLoss()
 
-# 监督训练循环
+# Supervised training loops 
 classifier_model.to(device)  # Move model to GPU
 classifier_model.train()
 num_epochs_cls = 1000 #500 #5
@@ -237,12 +236,12 @@ for epoch in range(num_epochs_cls):
         y_batch = y_batch.to(device)  # Move input batch to GPU
         optimizer_cls.zero_grad()
         logits = classifier_model(X_batch)        # (batch, 2)
-        loss = criterion_cls(logits, y_batch)     # 计算交叉熵损失
+        loss = criterion_cls(logits, y_batch)     # compute cross entropy 
         loss.backward()
         optimizer_cls.step()
         total_loss += loss.item() * X_batch.size(0)
     avg_loss = total_loss / len(train_dataset)
-    # 简单计算训练集上的准确率
+    # Compute accuracy of training dataset 
     correct = 0
     total = 0
     for X_batch, y_batch in train_loader:
@@ -266,7 +265,7 @@ for epoch in range(num_epochs_cls):
 if classifier_model_saved == False:
     torch.save(classifier_model.state_dict(), 'classifier_model.pth')
 
-# 模型评估（在测试集上）
+# model evaluation (on the test dataset)
 classifier_model.eval()
 all_preds = []
 all_labels = []
@@ -283,7 +282,7 @@ with torch.no_grad():
 expected_labels = [0, 1, 2]  # Assuming 0 is "Normal" and 1 is "Diabetic", and 2 is "Moderate"
 
 
-# 计算混淆矩阵和分类报告
+# Compute confusion matrix and classification report 
 # Check the unique classes in all_labels
 #unique_classes = np.unique(all_labels)
 # Calculate confusion matrix and classification report

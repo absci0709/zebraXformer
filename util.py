@@ -294,12 +294,12 @@ class MaskedAutoencoderModel(nn.Module):
         reconstructed = self.decoder_head(encoded)  # (batch, seq_len, feature_dim)
         return reconstructed
 
-# 自定义数据集：用于有监督的分类训练
+# User-defined dataset: for supervised training of classification 
 class TrajectoryDataset(Dataset):
     def __init__(self, trajectories, labels):
         """
-        trajectories: 轨迹序列列表，每个元素是 numpy array (T, F)
-        labels: 与轨迹对应的标签列表（0或1）
+        trajectories: trajectory time sequence talbe, with each element of numpy array (T, F)
+        labels: corresponding to entries in trajectories （0或1）
         """
         self.trajectories = trajectories
         self.labels = labels
@@ -310,7 +310,7 @@ class TrajectoryDataset(Dataset):
         y = torch.tensor(self.labels[idx], dtype=torch.long)
         return X, y
 
-# 定义分类模型：包含预训练好的编码器和一个分类头
+# Define classifier model: including pretrained encoder and a classifier head 
 class TrajectoryClassifier(nn.Module):
     def __init__(self, encoder, d_model, num_classes=2):
         super(TrajectoryClassifier, self).__init__()
@@ -321,12 +321,12 @@ class TrajectoryClassifier(nn.Module):
         x: (batch, seq_len, feature_dim)
         输出: (batch, num_classes) 的 logits
         """
-        # 获取编码器输出 (batch, seq_len, d_model)
+        # Get the output of encoder (batch, seq_len, d_model)
         with torch.no_grad():
-            # 我们在初始化时可以选择冻结编码器参数：
-            # 这里forward用 no_grad 是为了演示冻结编码器，如果需要微调，可去掉该上下文管理器
+            # We can choose to freeze the weights of encoder during initialziation 
+            # Here forward uses no_grad to freeze encode. If fine tuning needed, the context manager can be removed
             encoded_seq = self.encoder(x)
-        # 简单地对时间序列维度做平均，以获取整个序列的表示
+        # Simple averaging the time-series dimension to obtain the expressions of the entire sequence 
         seq_repr = encoded_seq.mean(dim=1)  # (batch, d_model)
         logits = self.classifier_head(seq_repr)  # (batch, num_classes)
         return logits
@@ -354,7 +354,7 @@ def build_dataset(case_names):
 
 def eval_model(classifier_model, test_loader):
     classifier_model.to(device)
-    # 模型评估（在测试集上）
+    # model evaluation (on test dataset)
     classifier_model.eval()
     all_preds = []
     all_labels = []
@@ -372,7 +372,7 @@ def eval_model(classifier_model, test_loader):
     expected_labels = [0, 1, 2]  # Assuming 0 is "Normal" and 1 is "Diabetic", and 2 is "Moderate"
 
 
-    # 计算混淆矩阵和分类报告
+    # Compute confusion matrix and classification report 
     # Check the unique classes in all_labels
     #unique_classes = np.unique(all_labels)
     # Calculate confusion matrix and classification report
